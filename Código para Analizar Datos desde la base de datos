@@ -1,0 +1,343 @@
+sql
+---
+-- PROYECTO: Análisis de Funnel de Conversión y Retención de Usuarios para Mercado Libre
+-- OBJETIVO: Medición de etapas del embudo de compra y tasas de retención (D+7, D+14, D+21, D+28).
+---
+
+-- Exploración inicial: Muestra las primeras filas de las tablas de eventos y retención para validación de datos.
+Select * from mercadolibre_funnel limit 5;
+Select * from mercadolibre_retention limit 5;
+select distinct event_name from mercadolibre_funnel
+order by event_name asc;
+
+-- Estrategia de análisis: 1) Definir el alcance por evento/fecha; 2) Unir las audiencias y contar la progresión.
+
+-- 1. Definición de CTEs (Common Table Expressions) por cada etapa del embudo de conversión.
+WITH first_visit AS (
+SELECT DISTINCT user_id
+FROM mercadolibre_funnel -- Base de datos de eventos para seguimiento de usuarios.
+WHERE event_name = 'first_visit'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+select_item AS (
+SELECT DISTINCT user_id
+FROM mercadolibre_funnel
+WHERE event_name IN ('select_item', 'select_promotion')
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+add_to_cart AS (
+SELECT DISTINCT user_id
+FROM mercadolibre_funnel
+WHERE event_name = 'add_to_cart'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+begin_checkout AS (
+SELECT DISTINCT user_id
+FROM mercadolibre_funnel
+WHERE event_name = 'begin_checkout'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+add_shipping_info AS (
+SELECT DISTINCT user_id
+FROM mercadolibre_funnel
+WHERE event_name = 'add_shipping_info'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+add_payment_info AS (
+SELECT DISTINCT user_id
+FROM mercadolibre_funnel
+WHERE event_name = 'add_payment_info'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+purchase AS (
+SELECT DISTINCT user_id
+FROM mercadolibre_funnel
+WHERE event_name = 'purchase'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+)
+-- 2. Unión de las etapas mediante LEFT JOINs secuenciales y conteo final de usuarios por embudo.
+SELECT
+COUNT(fv.user_id) AS usuarios_first_visit,
+COUNT(si.user_id) AS usuarios_select_item,
+COUNT(atc.user_id) AS usuarios_add_to_cart,
+COUNT(bc.user_id) AS usuarios_begin_checkout,
+COUNT(asi.user_id) AS usuarios_add_shipping_info,
+COUNT(api.user_id) AS usuarios_add_payment_info,
+COUNT(p.user_id) AS usuarios_purchase
+FROM first_visit fv
+LEFT JOIN select_item si ON fv.user_id = si.user_id
+LEFT JOIN add_to_cart atc ON si.user_id = atc.user_id
+LEFT JOIN begin_checkout bc ON atc.user_id = bc.user_id
+LEFT JOIN add_shipping_info asi ON bc.user_id = asi.user_id
+LEFT JOIN add_payment_info api ON asi.user_id = api.user_id
+LEFT JOIN purchase p ON api.user_id = p.user_id;
+
+-- El siguiente bloque de CTEs y SELECT final repite la lógica anterior, pero se omite la documentación repetida aquí.
+
+WITH first_visit AS (
+-- Definición de usuarios únicos que realizaron la primera visita en el rango de fechas.
+SELECT DISTINCT user_id
+FROM mercadolibre_funnel
+WHERE event_name = 'first_visit'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+select_item AS (
+-- Usuarios únicos que interactuaron con productos o promociones.
+SELECT DISTINCT user_id
+FROM mercadolibre_funnel
+WHERE event_name IN ('select_item', 'select_promotion')
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+add_to_cart AS (
+-- Usuarios únicos que agregaron un artículo al carrito.
+SELECT DISTINCT user_id
+FROM mercadolibre_funnel
+WHERE event_name = 'add_to_cart'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+begin_checkout AS (
+-- Usuarios únicos que iniciaron el proceso de pago.
+SELECT DISTINCT user_id
+FROM mercadolibre_funnel
+WHERE event_name = 'begin_checkout'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+add_shipping_info AS (
+-- Usuarios únicos que proporcionaron información de envío.
+SELECT DISTINCT user_id
+FROM mercadolibre_funnel
+WHERE event_name = 'add_shipping_info'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+add_payment_info AS (
+-- Usuarios únicos que ingresaron datos de pago.
+SELECT DISTINCT user_id
+FROM mercadolibre_funnel
+WHERE event_name = 'add_payment_info'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+purchase AS (
+-- Usuarios únicos que completaron la transacción (compra finalizada).
+SELECT DISTINCT user_id
+FROM mercadolibre_funnel
+WHERE event_name = 'purchase'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+funnel_counts AS(
+-- Agregación de conteos de usuarios por etapa, utilizando la primera visita como ancla.
+SELECT
+COUNT(fv.user_id) AS usuarios_first_visit,
+COUNT(si.user_id) AS usuarios_select_item,
+COUNT(a.user_id) AS usuarios_add_to_cart,
+COUNT(bc.user_id) AS usuarios_begin_checkout,
+COUNT(asi.user_id) AS usuarios_add_shipping_info,
+COUNT(api.user_id) AS usuarios_add_payment_info,
+COUNT(p.user_id) AS usuarios_purchase
+FROM first_visit fv
+LEFT JOIN select_item si ON fv.user_id = si.user_id
+LEFT JOIN add_to_cart a ON fv.user_id = a.user_id
+LEFT JOIN begin_checkout bc ON fv.user_id = bc.user_id
+LEFT JOIN add_shipping_info asi ON fv.user_id = asi.user_id
+LEFT JOIN add_payment_info api ON fv.user_id = api.user_id
+LEFT JOIN purchase p ON fv.user_id = p.user_id
+)
+-- Cálculo de las tasas de conversión entre etapas, normalizadas por el total de primeras visitas.
+SELECT
+-- Conversión de Visita a Interés/Consideración (%)
+ROUND(usuarios_select_item * 100.0 / NULLIF(usuarios_first_visit, 0), 2) AS conversion_select_item,
+-- Conversión de Visita a Intención de Compra (Añadir al Carrito) (%)
+ROUND(usuarios_add_to_cart * 100.0 / NULLIF(usuarios_first_visit, 0), 2) AS conversion_add_to_cart,
+-- Conversión de Visita a Inicio de Pago (%)
+ROUND(usuarios_begin_checkout * 100.0 / NULLIF(usuarios_first_visit, 0), 2) AS conversion_begin_checkout,
+-- Conversión de Visita a Información de Envío (%)
+ROUND(usuarios_add_shipping_info * 100.0 / NULLIF(usuarios_first_visit, 0), 2) AS conversion_add_shipping_info,
+-- Conversión de Visita a Información de Pago (%)
+ROUND(usuarios_add_payment_info * 100.0 / NULLIF(usuarios_first_visit, 0), 2) AS conversion_add_payment_info,
+-- Conversión Final de Visita a Compra Completada (%)
+ROUND(usuarios_purchase * 100.0 / NULLIF(usuarios_first_visit, 0), 2) AS conversion_purchase
+FROM funnel_counts;
+
+
+-- OBJETIVO: Replicar el análisis de embudo pero segmentado por país (`country`).
+
+-- 1. Creación de CTEs por etapa, propagando la dimensión `country` para segmentación.
+WITH first_visits AS (
+-- Usuarios únicos y su país de origen para la primera visita.
+SELECT DISTINCT user_id, country
+FROM mercadolibre_funnel
+WHERE event_name = 'first_visit'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+select_item AS (
+-- Usuarios únicos y país que seleccionaron un artículo.
+SELECT DISTINCT user_id, country
+FROM mercadolibre_funnel
+WHERE event_name IN ('select_item', 'select_promotion')
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+add_to_cart AS (
+-- Usuarios únicos y país que añadieron al carrito.
+SELECT DISTINCT user_id, country
+FROM mercadolibre_funnel
+WHERE event_name = 'add_to_cart'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+begin_checkout AS (
+-- Usuarios únicos y país que iniciaron el pago.
+SELECT DISTINCT user_id, country
+FROM mercadolibre_funnel
+WHERE event_name = 'begin_checkout'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+add_shipping_info AS (
+-- Usuarios únicos y país que completaron la información de envío.
+SELECT DISTINCT user_id, country
+FROM mercadolibre_funnel
+WHERE event_name = 'add_shipping_info'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+add_payment_info AS (
+-- Usuarios únicos y país que completaron la información de pago.
+SELECT DISTINCT user_id, country
+FROM mercadolibre_funnel
+WHERE event_name = 'add_payment_info'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+purchase AS (
+-- Usuarios únicos y país que finalizaron la compra.
+SELECT DISTINCT user_id, country
+FROM mercadolibre_funnel
+WHERE event_name = 'purchase'
+AND event_date BETWEEN '2025-01-01' AND '2025-08-31'
+),
+funnel_counts AS (
+-- Agregación y conteo por país, uniendo por user_id Y country.
+SELECT
+fv.country,
+COUNT(fv.user_id) AS usuarios_first_visit,
+COUNT(si.user_id) AS usuarios_select_item,
+COUNT(a.user_id) AS usuarios_add_to_cart,
+COUNT(bc.user_id) AS usuarios_begin_checkout,
+COUNT(asi.user_id) AS usuarios_add_shipping_info,
+COUNT(api.user_id) AS usuarios_add_payment_info,
+COUNT(p.user_id) AS usuarios_purchase
+FROM first_visits fv
+LEFT JOIN select_item si ON fv.user_id = si.user_id AND fv.country = si.country
+LEFT JOIN add_to_cart a ON fv.user_id = a.user_id AND fv.country = a.country
+LEFT JOIN begin_checkout bc ON fv.user_id = bc.user_id AND fv.country = bc.country
+LEFT JOIN add_shipping_info asi ON fv.user_id = asi.user_id AND fv.country = asi.country
+LEFT JOIN add_payment_info api ON fv.user_id = api.user_id AND fv.country = api.country
+LEFT JOIN purchase p ON fv.user_id = p.user_id AND fv.country = p.country
+GROUP BY fv.country
+)
+-- Cálculo final de las tasas de conversión por país, ordenado por la conversión final de compra.
+SELECT
+country,
+usuarios_select_item * 100.0 / NULLIF(usuarios_first_visit, 0) AS conversion_select_item,
+usuarios_add_to_cart * 100.0 / NULLIF(usuarios_first_visit, 0) AS conversion_add_to_cart,
+usuarios_begin_checkout * 100.0 / NULLIF(usuarios_first_visit, 0)AS conversion_begin_checkout,
+usuarios_add_shipping_info * 100.0 / NULLIF(usuarios_first_visit, 0) AS conversion_add_shipping_info,
+usuarios_add_payment_info * 100.0 / NULLIF(usuarios_first_visit, 0)AS conversion_add_payment_info,
+usuarios_purchase * 100.0 / NULLIF(usuarios_first_visit, 0) AS conversion_purchase
+FROM funnel_counts
+ORDER BY conversion_purchase DESC;
+
+
+-- OBJETIVO: Análisis de Retención de Usuarios.
+
+-- Conteo acumulado de usuarios activos por país en diferentes hitos de tiempo (Día 7, 14, 21, 28).
+SELECT
+country,
+-- Contar usuarios activos acumulados al día 7 (actividad >= 7 días después del registro)
+COUNT(DISTINCT CASE
+WHEN active = 1 AND day_after_signup >= 7 THEN user_id
+END) AS users_d7,
+-- Contar usuarios activos acumulados al día 14
+COUNT(DISTINCT CASE
+WHEN active = 1 AND day_after_signup >= 14 THEN user_id
+END) AS users_d14,
+-- Contar usuarios activos acumulados al día 21
+COUNT(DISTINCT CASE
+WHEN active = 1 AND day_after_signup >= 21 THEN user_id
+END) AS users_d21,
+-- Contar usuarios activos acumulados al día 28
+COUNT(DISTINCT CASE
+WHEN active = 1 AND day_after_signup >= 28 THEN user_id
+END) AS users_d28
+FROM mercadolibre_retention
+WHERE activity_date BETWEEN '2025-01-01' AND '2025-08-31' -- Filtrado por el rango de fechas de análisis solicitado.
+GROUP BY country
+ORDER BY country ASC;
+
+-- OBJETIVO: Convertir los conteos acumulados de retención en porcentajes por país.
+SELECT
+country,
+-- Porcentaje de retención D7 (activos en D7 / total de usuarios únicos en el periodo)
+ROUND(
+COUNT(DISTINCT CASE WHEN active = 1 AND day_after_signup >= 7 THEN user_id
+END) * 100.0 /
+NULLIF(COUNT(DISTINCT user_id), 0),
+1) AS retention_d7_pct,
+-- Porcentaje de retención D14
+ROUND(
+COUNT(DISTINCT CASE WHEN active = 1 AND day_after_signup >= 14 THEN user_id END) * 100.0 /
+NULLIF(COUNT(DISTINCT user_id), 0),
+1) AS retention_d14_pct,
+-- Porcentaje de retención D21
+ROUND(
+COUNT(DISTINCT CASE WHEN active = 1 AND day_after_signup >= 21 THEN user_id END) * 100.0 /
+NULLIF(COUNT(DISTINCT user_id), 0),
+1) AS retention_d21_pct,
+-- Porcentaje de retención D28
+ROUND(
+COUNT(DISTINCT CASE WHEN active = 1 AND day_after_signup >= 28 THEN user_id END) * 100.0 /
+NULLIF(COUNT(DISTINCT user_id), 0),
+1) AS retention_d28_pct
+FROM mercadolibre_retention
+WHERE activity_date BETWEEN '2025-01-01' AND '2025-08-31'
+GROUP BY country
+ORDER BY country ASC;
+
+-- OBJETIVO: Asignar a cada usuario su cohorte de registro en formato YYYY-MM para análisis de cohortes detallado.
+-- ESTRATEGIA:
+-- 1) Agrupar por usuario para encontrar el primer registro.
+-- 2) Identificar la fecha mínima de registro (signup_date) para cada usuario.
+-- 3) Truncar esa fecha al primer día del mes y formatear como 'YYYY-MM'.
+-- 4) Se muestra un ejemplo de validación con LIMIT 5.
+SELECT
+user_id,
+MIN(signup_date) AS signup_date,
+TO_CHAR(DATE_TRUNC('month', MIN(signup_date)), 'YYYY-MM') AS cohort
+FROM mercadolibre_retention
+GROUP BY user_id
+LIMIT 5;
+
+-- 1) CTE para identificar la cohorte de cada usuario.
+WITH cohort AS (
+SELECT
+user_id,
+TO_CHAR(DATE_TRUNC('month', MIN(signup_date)), 'YYYY-MM') AS cohort
+FROM mercadolibre_retention
+GROUP BY user_id
+),
+-- 2) CTE para enriquecer los datos de actividad con la cohorte correspondiente.
+actividad AS (
+SELECT
+r.user_id,
+c.cohort,
+r.day_after_signup,
+r.active
+FROM mercadolibre_retention r
+LEFT JOIN cohort c ON r.user_id = c.user_id
+WHERE r.activity_date BETWEEN '2025-01-01' AND '2025-08-31'
+)
+-- 3) SELECT final: Cálculo de porcentajes de retención por cohorte.
+SELECT
+cohort,
+ROUND(100.0 * COUNT(DISTINCT CASE WHEN day_after_signup >= 7 AND active = 1 THEN user_id END) / NULLIF(COUNT(DISTINCT user_id), 0), 1) AS retention_d7_pct,
+ROUND(100.0 * COUNT(DISTINCT CASE WHEN day_after_signup >= 14 AND active = 1 THEN user_id END) / NULLIF(COUNT(DISTINCT user_id), 0), 1) AS retention_d14_pct,
+ROUND(100.0 * COUNT(DISTINCT CASE WHEN day_after_signup >= 21 AND active = 1 THEN user_id END) / NULLIF(COUNT(DISTINCT user_id), 0), 1) AS retention_d21_pct,
+ROUND(100.0 * COUNT(DISTINCT CASE WHEN day_after_signup >= 28 AND active = 1 THEN user_id END) / NULLIF(COUNT(DISTINCT user_id), 0), 1) AS retention_d28_pct
+FROM actividad
+GROUP BY cohort
+ORDER BY cohort;
